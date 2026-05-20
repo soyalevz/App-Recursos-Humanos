@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recursos Humanos — Gestión de Trabajadores</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <div class="header no-print">
+    <div class="header-left">
+      <div class="logo"><i class="ti ti-users"></i></div>
+      <div>
+        <div class="app-title">Recursos Humanos</div>
+        <div class="app-sub">Gestión de trabajadores</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="setTab('trabajadores')"><i class="ti ti-users"></i> Trabajadores</button>
+      <button class="tab" onclick="setTab('alertas')"><i class="ti ti-bell"></i> Alertas</button>
+      <button class="tab" onclick="setTab('resumen')"><i class="ti ti-chart-bar"></i> Resumen</button>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="sidebar">
+      <div class="sb-filter">
+        <input id="buscar" placeholder="Buscar nombre o RUT..." oninput="render()">
+        <select id="filtro-cc" onchange="render()">
+          <option value="">Todos los centros de costo</option>
+        </select>
+        <select id="filtro-tipo" onchange="render()">
+          <option value="">Todos los contratos</option>
+          <option value="indefinido">Indefinido</option>
+          <option value="plazo_fijo">Plazo fijo</option>
+        </select>
+        <select id="filtro-alerta" onchange="render()">
+          <option value="">Todos los estados</option>
+          <option value="danger">Con alerta</option>
+          <option value="ok">Vigentes</option>
+        </select>
+      </div>
+      <div class="sb-list" id="sb-list"></div>
+    </div>
+
+    <div class="main" id="main-content">
+      <div class="empty">Cargando...</div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Agregar trabajador</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Nombre completo *</label>
+        <input id="f-nombre" placeholder="Ej: Juan Pérez González">
+      </div>
+      <div class="form-group">
+        <label>RUT *</label>
+        <input id="f-rut" placeholder="12.345.678-9">
+      </div>
+      <div class="form-group">
+        <label>Cargo</label>
+        <input id="f-cargo" placeholder="Ej: Analista contable">
+      </div>
+      <div class="form-group">
+        <label>Tipo de contrato *</label>
+        <select id="f-tipo" onchange="toggleFechaFin()">
+          <option value="plazo_fijo">Plazo fijo</option>
+          <option value="indefinido">Indefinido</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Centro de costo *</label>
+        <select id="f-cc" onchange="toggleCCManual()">
+          <option value="Finanzas">Finanzas</option>
+          <option value="Tecnología">Tecnología</option>
+          <option value="Operaciones">Operaciones</option>
+          <option value="Ventas">Ventas</option>
+          <option value="Gerencia">Gerencia</option>
+          <option value="Obra/Faena">Obra / Faena</option>
+          <option value="otro">Otro...</option>
+        </select>
+      </div>
+      <div class="form-group" id="grp-cc-manual" style="display:none">
+        <label>Nombre del centro *</label>
+        <input id="f-cc-manual" placeholder="Nombre del centro de costo">
+      </div>
+      <div class="form-group">
+        <label>Fecha de inicio *</label>
+        <input id="f-inicio" type="date">
+      </div>
+      <div class="form-group" id="grp-fin">
+        <label>Fecha fin de contrato *</label>
+        <input id="f-fin" type="date">
+      </div>
+      <div class="form-group">
+        <label>Sueldo base ($) *</label>
+        <input id="f-sueldo" type="number" placeholder="800000">
+      </div>
+      <div class="form-group">
+        <label>Horario / Jornada</label>
+        <select id="f-horario">
+          <option value="normal">Horario normal</option>
+          <option value="art22">Art. 22 (sin control horario)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeForm()">Cancelar</button>
+      <button class="btn primary" onclick="saveWorker()">
+        <i class="ti ti-device-floppy"></i> Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app/app.js"></script>
+</body>
+</html>
