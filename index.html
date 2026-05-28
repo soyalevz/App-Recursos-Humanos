@@ -9,7 +9,6 @@
 </head>
 <body>
 
-<!-- HEADER -->
 <header class="header">
   <div class="header-left">
     <div class="logo"><i class="ti ti-users"></i></div>
@@ -18,12 +17,9 @@
       <div class="app-sub">Gestión de Personal</div>
     </div>
   </div>
-  <button class="add-btn-header no-print" onclick="openForm()">
-    <i class="ti ti-plus"></i>
-  </button>
+  <button class="add-btn-header" onclick="openForm()"><i class="ti ti-plus"></i></button>
 </header>
 
-<!-- NAV TABS -->
 <nav class="nav-tabs">
   <button class="nav-tab active" onclick="setTab('trabajadores')" data-tab="trabajadores">
     <i class="ti ti-users"></i><span>Personal</span>
@@ -37,13 +33,10 @@
   </button>
 </nav>
 
-<!-- FILTROS -->
 <div class="filters-bar" id="filters-bar">
-  <input id="buscar" class="filter-input" placeholder="&#xf0cd; Buscar nombre o RUT..." oninput="render()">
+  <input id="buscar" class="filter-input" placeholder="Buscar nombre o RUT..." oninput="render()">
   <div class="filter-row">
-    <select id="filtro-cc" class="filter-select" onchange="render()">
-      <option value="">Todas las obras</option>
-    </select>
+    <select id="filtro-cc" class="filter-select" onchange="render()"><option value="">Todas las obras</option></select>
     <select id="filtro-tipo" class="filter-select" onchange="render()">
       <option value="">Todos</option>
       <option value="indefinido">Indefinido</option>
@@ -58,10 +51,13 @@
   </div>
 </div>
 
-<!-- CONTENIDO PRINCIPAL -->
-<main id="main-content" class="main-content"></main>
+<div id="loading-screen" class="loading-screen">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Cargando trabajadores...</div>
+</div>
 
-<!-- MODAL FORMULARIO -->
+<main id="main-content" class="main-content" style="display:none"></main>
+
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <div class="modal-header">
@@ -70,31 +66,20 @@
     </div>
     <div class="info-box">
       <i class="ti ti-info-circle"></i>
-      <span>La alerta de contrato indefinido se calcula automáticamente a los 3 meses desde el inicio.</span>
+      <span>La alerta de indefinido se calcula automaticamente a los 3 meses desde el ingreso.</span>
     </div>
     <div class="form-fields">
-      <div class="form-group full">
-        <label>Nombre completo *</label>
-        <input id="f-nombre" placeholder="JUAN PÉREZ GONZÁLEZ">
-      </div>
-      <div class="form-group">
-        <label>RUT *</label>
-        <input id="f-rut" placeholder="12.345.678-9">
-      </div>
-      <div class="form-group">
-        <label>Cargo</label>
-        <input id="f-cargo" placeholder="Conductor Camión">
-      </div>
-      <div class="form-group">
-        <label>Tipo de contrato *</label>
+      <div class="form-group full"><label>Nombre completo *</label><input id="f-nombre" placeholder="JUAN PEREZ GONZALEZ"></div>
+      <div class="form-group"><label>RUT *</label><input id="f-rut" placeholder="12.345.678-9"></div>
+      <div class="form-group"><label>Cargo</label><input id="f-cargo" placeholder="Conductor Camion"></div>
+      <div class="form-group"><label>Tipo de contrato *</label>
         <select id="f-tipo" onchange="toggleFechaFin()">
           <option value="plazo_fijo">Plazo fijo</option>
           <option value="indefinido">Indefinido</option>
           <option value="obra_faena">Obra / Faena</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Obra / Centro de costo *</label>
+      <div class="form-group"><label>Obra / Centro de costo *</label>
         <select id="f-cc" onchange="toggleCCManual()">
           <option value="TALLER">TALLER</option>
           <option value="OFICINA CENTRAL">OFICINA CENTRAL</option>
@@ -110,56 +95,31 @@
           <option value="otro">Otra obra...</option>
         </select>
       </div>
-      <div class="form-group full" id="grp-cc-manual" style="display:none">
-        <label>Nombre de la obra *</label>
-        <input id="f-cc-manual" placeholder="Nombre de la obra o faena">
-      </div>
-      <div class="form-group">
-        <label>Fecha de inicio *</label>
-        <input id="f-inicio" type="date">
-      </div>
-      <div class="form-group" id="grp-fin">
-        <label>Fecha fin contrato *</label>
-        <input id="f-fin" type="date">
-      </div>
-      <div class="form-group">
-        <label>Líquido ($) *</label>
-        <input id="f-liquido" type="number" placeholder="800000">
-      </div>
-      <div class="form-group">
-        <label>Horario</label>
+      <div class="form-group full" id="grp-cc-manual" style="display:none"><label>Nombre de la obra *</label><input id="f-cc-manual" placeholder="Nombre de la obra o faena"></div>
+      <div class="form-group"><label>Fecha de inicio *</label><input id="f-inicio" type="date"></div>
+      <div class="form-group" id="grp-fin"><label>Fecha fin contrato *</label><input id="f-fin" type="date"></div>
+      <div class="form-group"><label>Liquido ($) *</label><input id="f-liquido" type="number" placeholder="800000"></div>
+      <div class="form-group"><label>Horario</label>
         <select id="f-horario">
           <option value="art22">Art. 22 (sin control)</option>
           <option value="normal">Jornada ordinaria</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Correo</label>
-        <input id="f-correo" type="email" placeholder="correo@gmail.com">
-      </div>
-      <div class="form-group">
-        <label>Teléfono</label>
-        <input id="f-telefono" placeholder="56912345678">
-      </div>
-      <div class="form-group full">
-        <label>Notas</label>
-        <input id="f-notas" placeholder="Observaciones adicionales">
-      </div>
+      <div class="form-group"><label>Correo</label><input id="f-correo" type="email" placeholder="correo@gmail.com"></div>
+      <div class="form-group"><label>Telefono</label><input id="f-telefono" placeholder="56912345678"></div>
+      <div class="form-group full"><label>Notas</label><input id="f-notas" placeholder="Observaciones adicionales"></div>
     </div>
     <div class="form-actions">
       <button class="btn" onclick="closeForm()">Cancelar</button>
-      <button class="btn primary" onclick="saveWorker()">
-        <i class="ti ti-device-floppy"></i> Guardar
-      </button>
+      <button class="btn primary" id="btn-guardar" onclick="saveWorker()"><i class="ti ti-device-floppy"></i> Guardar</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL DETALLE TRABAJADOR -->
 <div class="modal-overlay" id="detail-overlay">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Detalle</span>
+      <span class="modal-title">Detalle trabajador</span>
       <button class="modal-close" onclick="closeDetail()"><i class="ti ti-x"></i></button>
     </div>
     <div id="detail-content"></div>
