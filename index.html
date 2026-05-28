@@ -2,74 +2,80 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Recursos Humanos — Gestión de Trabajadores</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>RRHH — Empresas Salfate</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
 
-<div class="app-shell">
-
-  <div class="header no-print">
-    <div class="header-left">
-      <div class="logo"><i class="ti ti-users"></i></div>
-      <div>
-        <div class="app-title">Recursos Humanos</div>
-        <div class="app-sub">Gestión de trabajadores</div>
-      </div>
-    </div>
-    <div class="tabs">
-      <button class="tab active" onclick="setTab('trabajadores')"><i class="ti ti-users"></i> Trabajadores</button>
-      <button class="tab" onclick="setTab('alertas')"><i class="ti ti-bell"></i> Alertas</button>
-      <button class="tab" onclick="setTab('resumen')"><i class="ti ti-chart-bar"></i> Resumen</button>
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo"><i class="ti ti-users"></i></div>
+    <div>
+      <div class="app-title">Empresas Salfate</div>
+      <div class="app-sub">Gestión de Personal</div>
     </div>
   </div>
+  <button class="add-btn-header no-print" onclick="openForm()">
+    <i class="ti ti-plus"></i>
+  </button>
+</header>
 
-  <div class="body">
+<!-- NAV TABS -->
+<nav class="nav-tabs">
+  <button class="nav-tab active" onclick="setTab('trabajadores')" data-tab="trabajadores">
+    <i class="ti ti-users"></i><span>Personal</span>
+  </button>
+  <button class="nav-tab" onclick="setTab('alertas')" data-tab="alertas">
+    <i class="ti ti-bell"></i><span>Alertas</span>
+    <span class="nav-badge" id="nav-badge" style="display:none">0</span>
+  </button>
+  <button class="nav-tab" onclick="setTab('resumen')" data-tab="resumen">
+    <i class="ti ti-chart-bar"></i><span>Resumen</span>
+  </button>
+</nav>
 
-    <div class="sidebar">
-      <div class="sb-filter">
-        <input id="buscar" placeholder="Buscar nombre o RUT..." oninput="render()">
-        <select id="filtro-cc" onchange="render()">
-          <option value="">Todos los centros de costo</option>
-        </select>
-        <select id="filtro-tipo" onchange="render()">
-          <option value="">Todos los contratos</option>
-          <option value="indefinido">Indefinido</option>
-          <option value="plazo_fijo">Plazo fijo</option>
-        </select>
-        <select id="filtro-alerta" onchange="render()">
-          <option value="">Todos los estados</option>
-          <option value="alerta">Con alerta activa</option>
-          <option value="ok">Sin alertas</option>
-        </select>
-      </div>
-      <div class="sb-list" id="sb-list"></div>
-    </div>
-
-    <div class="main" id="main-content">
-      <div class="empty">Cargando...</div>
-    </div>
-
+<!-- FILTROS -->
+<div class="filters-bar" id="filters-bar">
+  <input id="buscar" class="filter-input" placeholder="&#xf0cd; Buscar nombre o RUT..." oninput="render()">
+  <div class="filter-row">
+    <select id="filtro-cc" class="filter-select" onchange="render()">
+      <option value="">Todas las obras</option>
+    </select>
+    <select id="filtro-tipo" class="filter-select" onchange="render()">
+      <option value="">Todos</option>
+      <option value="indefinido">Indefinido</option>
+      <option value="plazo_fijo">Plazo fijo</option>
+      <option value="obra_faena">Obra/Faena</option>
+    </select>
+    <select id="filtro-alerta" class="filter-select" onchange="render()">
+      <option value="">Todos</option>
+      <option value="alerta">Con alerta</option>
+      <option value="ok">Sin alerta</option>
+    </select>
   </div>
-
 </div>
 
-<!-- MODAL -->
+<!-- CONTENIDO PRINCIPAL -->
+<main id="main-content" class="main-content"></main>
+
+<!-- MODAL FORMULARIO -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <div class="modal-title" id="modal-title">Agregar trabajador</div>
-
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Agregar trabajador</span>
+      <button class="modal-close" onclick="closeForm()"><i class="ti ti-x"></i></button>
+    </div>
     <div class="info-box">
       <i class="ti ti-info-circle"></i>
-      <span>La alerta de contrato indefinido se calcula automáticamente al cumplirse 3 meses desde la fecha de inicio.</span>
+      <span>La alerta de contrato indefinido se calcula automáticamente a los 3 meses desde el inicio.</span>
     </div>
-
-    <div class="form-grid">
+    <div class="form-fields">
       <div class="form-group full">
         <label>Nombre completo *</label>
-        <input id="f-nombre" placeholder="Ej: Juan Pérez González">
+        <input id="f-nombre" placeholder="JUAN PÉREZ GONZÁLEZ">
       </div>
       <div class="form-group">
         <label>RUT *</label>
@@ -77,58 +83,87 @@
       </div>
       <div class="form-group">
         <label>Cargo</label>
-        <input id="f-cargo" placeholder="Ej: Analista contable">
+        <input id="f-cargo" placeholder="Conductor Camión">
       </div>
       <div class="form-group">
         <label>Tipo de contrato *</label>
         <select id="f-tipo" onchange="toggleFechaFin()">
           <option value="plazo_fijo">Plazo fijo</option>
           <option value="indefinido">Indefinido</option>
+          <option value="obra_faena">Obra / Faena</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Centro de costo *</label>
+        <label>Obra / Centro de costo *</label>
         <select id="f-cc" onchange="toggleCCManual()">
-          <option value="Finanzas">Finanzas</option>
-          <option value="Tecnología">Tecnología</option>
-          <option value="Operaciones">Operaciones</option>
-          <option value="Ventas">Ventas</option>
-          <option value="Gerencia">Gerencia</option>
-          <option value="Obra/Faena">Obra / Faena</option>
-          <option value="otro">Otro...</option>
+          <option value="TALLER">TALLER</option>
+          <option value="OFICINA CENTRAL">OFICINA CENTRAL</option>
+          <option value="VARIAS OBRAS">VARIAS OBRAS</option>
+          <option value="CONTRATO BESALCO - EFE">CONTRATO BESALCO - EFE</option>
+          <option value="MOLLER - LOS LITRES">MOLLER - LOS LITRES</option>
+          <option value="CASA RESERVA">CASA RESERVA</option>
+          <option value="CONCRETA - EL MARISCAL 3">CONCRETA - EL MARISCAL 3</option>
+          <option value="CONCRETA - LA PLATINA C">CONCRETA - LA PLATINA C</option>
+          <option value="POZO - HUYACANES">POZO - HUYACANES</option>
+          <option value="CYPCO - PUENTE ALTO">CYPCO - PUENTE ALTO</option>
+          <option value="OBRA EBCO - CAMINO DEL CHIN">OBRA EBCO - CAMINO DEL CHIN</option>
+          <option value="otro">Otra obra...</option>
         </select>
       </div>
-      <div class="form-group" id="grp-cc-manual" style="display:none">
-        <label>Nombre del centro *</label>
-        <input id="f-cc-manual" placeholder="Nombre del centro de costo">
+      <div class="form-group full" id="grp-cc-manual" style="display:none">
+        <label>Nombre de la obra *</label>
+        <input id="f-cc-manual" placeholder="Nombre de la obra o faena">
       </div>
       <div class="form-group">
         <label>Fecha de inicio *</label>
         <input id="f-inicio" type="date">
       </div>
       <div class="form-group" id="grp-fin">
-        <label>Fecha fin de contrato *</label>
+        <label>Fecha fin contrato *</label>
         <input id="f-fin" type="date">
       </div>
       <div class="form-group">
-        <label>Sueldo base ($) *</label>
-        <input id="f-sueldo" type="number" placeholder="800000">
+        <label>Líquido ($) *</label>
+        <input id="f-liquido" type="number" placeholder="800000">
       </div>
       <div class="form-group">
-        <label>Horario / Jornada</label>
+        <label>Horario</label>
         <select id="f-horario">
-          <option value="normal">Horario normal</option>
-          <option value="art22">Art. 22 (sin control horario)</option>
+          <option value="art22">Art. 22 (sin control)</option>
+          <option value="normal">Jornada ordinaria</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>Correo</label>
+        <input id="f-correo" type="email" placeholder="correo@gmail.com">
+      </div>
+      <div class="form-group">
+        <label>Teléfono</label>
+        <input id="f-telefono" placeholder="56912345678">
+      </div>
+      <div class="form-group full">
+        <label>Notas</label>
+        <input id="f-notas" placeholder="Observaciones adicionales">
+      </div>
     </div>
-
     <div class="form-actions">
       <button class="btn" onclick="closeForm()">Cancelar</button>
       <button class="btn primary" onclick="saveWorker()">
         <i class="ti ti-device-floppy"></i> Guardar
       </button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE TRABAJADOR -->
+<div class="modal-overlay" id="detail-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Detalle</span>
+      <button class="modal-close" onclick="closeDetail()"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="detail-content"></div>
+    <div class="form-actions" id="detail-actions"></div>
   </div>
 </div>
 
