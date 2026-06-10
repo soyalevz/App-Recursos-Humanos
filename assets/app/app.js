@@ -20,7 +20,9 @@ const KNOWN_CCS=Object.keys(CC_CFG);
 function ccCfg(cc){return CC_CFG[cc]||{icon:'ti-map-pin',bg:'#F1F5F9',tx:'#475569'};}
 
 let workers=[],nextId=200,editingId=null,currentTab='trabajadores';
+let vacWorker=null;
 
+// ── API Supabase ──────────────────────────────────────────────
 async function sbGet(){
   const r=await fetch(SUPABASE_URL+'/rest/v1/'+TABLE+'?order=nombre',
     {headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
@@ -51,6 +53,7 @@ async function sbDel(id){
   if(!r.ok)throw new Error('DELETE '+r.status);
 }
 
+// ── Fechas ────────────────────────────────────────────────────
 function dl(fin){if(!fin)return null;return Math.ceil((new Date(fin+'T00:00:00')-new Date())/864e5);}
 function add3m(d){const x=new Date(d+'T00:00:00');x.setMonth(x.getMonth()+3);return x.toISOString().slice(0,10);}
 function add1m(d){const x=new Date(d+'T00:00:00');x.setMonth(x.getMonth()+1);return x.toISOString().slice(0,10);}
@@ -60,6 +63,45 @@ function diff(a,b){return Math.ceil((new Date(b+'T00:00:00')-new Date(a+'T00:00:
 function fmt(d){if(!d)return '—';const p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0];}
 function liq(s){return '$'+Number(s).toLocaleString('es-CL');}
 
+// ── Vacaciones (ley chilena) ──────────────────────────────────
+// Acumula desde el 1 de enero del año en curso
+// Tasa: 1.25 dias habiles por mes = 0.04167 por dia trabajado
+// Solo dias habiles (lunes-viernes)
+function diasHabilesEntreFechas(desde,hasta){
+  let count=0;
+  const d=new Date(desde+'T00:00:00');
+  const h=new Date(hasta+'T00:00:00');
+  while(d<=h){
+    const dow=d.getDay();
+    if(dow>=1&&dow<=5)count++;
+    d.setDate(d.getDate()+1);
+  }
+  return count;
+}
+
+function calcVacaciones(w){
+  const inicio=new Date().getFullYear()+'-01-01';
+  const hoy=today();
+  const diasTrabajados=Math.max(0,diff(inicio,hoy));
+  const acumulado=Math.round(diasTrabajados*0.04167*100)/100;
+  const usados=vacUsados(w);
+  const saldo=Math.max(0,Math.round((acumulado-usados)*100)/100);
+  return {acumulado,usados,saldo,diasTrabajados};
+}
+
+function vacUsados(w){
+  const vac=Array.isArray(w.vacaciones_usadas)?w.vacaciones_usadas:(typeof w.vacaciones_usadas==='string'?JSON.parse(w.vacaciones_usadas||'[]'):[]);
+  return vac.reduce(function(sum,v){return sum+(v.dias||0);},0);
+}
+
+function getVacList(w){
+  const vac=w.vacaciones_usadas;
+  if(!vac)return [];
+  if(Array.isArray(vac))return vac;
+  try{return JSON.parse(vac);}catch(e){return [];}
+}
+
+// ── Alertas ───────────────────────────────────────────────────
 function getAlerts(w){
   const out=[],e=w.estado||null;
   if(w.tipo==='plazo_fijo'&&e!=='convertido_indefinido'){
@@ -82,18 +124,18 @@ function getAlerts(w){
     }
   }
   if(w.anexo_horas_extras){
-    const vAnexo=add3m(w.anexo_horas_extras),dA=dl(vAnexo);
-    if(dA<0)out.push({tipo:'anexo_venc',lvl:'danger',msg:'Anexo HH.EE vencido hace '+Math.abs(dA)+' dias (vencio '+fmt(vAnexo)+')'});
-    else if(dA<=10)out.push({tipo:'anexo_prox',lvl:'warn',msg:'Anexo HH.EE vence en '+dA+' dias — '+fmt(vAnexo)});
+    const vA=add3m(w.anexo_horas_extras),dA=dl(vA);
+    if(dA<0)out.push({tipo:'anexo_venc',lvl:'danger',msg:'Anexo HH.EE vencido hace '+Math.abs(dA)+' dias'});
+    else if(dA<=10)out.push({tipo:'anexo_prox',lvl:'warn',msg:'Anexo HH.EE vence en '+dA+' dias — '+fmt(vA)});
   }
   if(w.venc_rut){
     const dR=dl(w.venc_rut);
-    if(dR<0)out.push({tipo:'rut_venc',lvl:'danger',msg:'RUT vencido hace '+Math.abs(dR)+' dias ('+fmt(w.venc_rut)+')'});
+    if(dR<0)out.push({tipo:'rut_venc',lvl:'danger',msg:'RUT vencido hace '+Math.abs(dR)+' dias'});
     else if(dR<=10)out.push({tipo:'rut_prox',lvl:'warn',msg:'RUT vence en '+dR+' dias — '+fmt(w.venc_rut)});
   }
   if(w.tiene_licencia&&w.venc_licencia){
     const dL=dl(w.venc_licencia);
-    if(dL<0)out.push({tipo:'lic_venc',lvl:'danger',msg:'Licencia vencida hace '+Math.abs(dL)+' dias ('+fmt(w.venc_licencia)+')'});
+    if(dL<0)out.push({tipo:'lic_venc',lvl:'danger',msg:'Licencia vencida hace '+Math.abs(dL)+' dias'});
     else if(dL<=10)out.push({tipo:'lic_prox',lvl:'warn',msg:'Licencia vence en '+dL+' dias — '+fmt(w.venc_licencia)});
   }
   return out;
@@ -101,26 +143,42 @@ function getAlerts(w){
 function hasAlert(w){return getAlerts(w).length>0;}
 function totalAl(){return workers.filter(hasAlert).length;}
 
+// ── Badge — FIX: convertido_indefinido muestra Indefinido ────
 function badge(w){
   const e=w.estado||null;
   if(e==='prorrogado')return '<span class="badge b-prorrog">Prorrogado</span>';
-  if(e==='convertido_indefinido')return '<span class="badge b-convert">Convertido</span>';
+  // convertido_indefinido ya tiene tipo=indefinido, mostrar Indefinido
   if(w.tipo==='indefinido')return '<span class="badge b-indef">Indefinido</span>';
   if(w.tipo==='obra_faena')return '<span class="badge b-faena">Obra/Faena</span>';
   return '<span class="badge b-fijo">Plazo fijo</span>';
 }
 function ini(n){return n.split(' ').map(x=>x[0]).filter(Boolean).slice(0,2).join('').toUpperCase();}
 
+// ── Acciones de estado ────────────────────────────────────────
 function doEstado(btn){accion(Number(btn.dataset.id),btn.dataset.estado);}
 async function accion(id,estado){
   const i=workers.findIndex(x=>x.id===id);if(i<0)return;
   const upd={estado};workers[i].estado=estado;
-  if(estado==='prorrogado'){workers[i].fin=add1m(workers[i].fin||workers[i].inicio);upd.fin=workers[i].fin;toast('Prorroga hasta '+fmt(workers[i].fin));}
-  if(estado==='convertido_indefinido'){workers[i].tipo='indefinido';workers[i].fin=null;upd.tipo='indefinido';upd.fin=null;toast(workers[i].nombre+' convertido');}
+  if(estado==='prorrogado'){
+    workers[i].fin=add1m(workers[i].fin||workers[i].inicio);
+    upd.fin=workers[i].fin;
+    toast('Prorroga hasta '+fmt(workers[i].fin));
+  }
+  if(estado==='convertido_indefinido'){
+    // FIX: cambiar tipo a indefinido y limpiar fin
+    workers[i].tipo='indefinido';
+    workers[i].fin=null;
+    workers[i].estado=null; // ya no necesita estado especial
+    upd.tipo='indefinido';
+    upd.fin=null;
+    upd.estado=null;
+    toast(workers[i].nombre+' convertido a contrato indefinido');
+  }
   try{await sbPatch(id,upd);}catch(e){console.error(e);}
   closeDetail();render();
 }
 
+// ── Filtros ───────────────────────────────────────────────────
 function filtered(){
   const q=(document.getElementById('buscar')||{}).value||'';
   const cc=(document.getElementById('filtro-cc')||{}).value||'';
@@ -142,6 +200,7 @@ function fillCC(){
   if(cur)s.value=cur;
 }
 
+// ── Tabs ──────────────────────────────────────────────────────
 function setTab(tab){
   currentTab=tab;
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
@@ -162,6 +221,7 @@ function render(){
   else renderR();
 }
 
+// ── Render Trabajadores ───────────────────────────────────────
 function renderT(f){
   const mc=document.getElementById('main-content');
   const byCC={};f.forEach(w=>{(byCC[w.cc]=byCC[w.cc]||[]).push(w);});
@@ -181,17 +241,21 @@ function renderT(f){
         else if(top.tipo==='prorr_venc'){ac='Prorroga vencida';acCls='danger';}
         else if(top.tipo==='vence'){ac='Vence '+dl(w.venc1||w.venc2||w.fin)+'d';acCls='warn';}
         else if(top.tipo==='vencido'){ac='Vencido';acCls='danger';}
-        else if(top.tipo==='anexo_prox'){ac='Anexo HH.EE vence pronto';acCls='warn';}
+        else if(top.tipo==='anexo_prox'){ac='Anexo HH.EE vence';acCls='warn';}
         else if(top.tipo==='anexo_venc'){ac='Anexo HH.EE vencido';acCls='danger';}
         else if(top.tipo==='rut_prox'){ac='RUT vence pronto';acCls='warn';}
         else if(top.tipo==='rut_venc'){ac='RUT vencido';acCls='danger';}
-        else if(top.tipo==='lic_prox'){ac='Licencia vence pronto';acCls='warn';}
+        else if(top.tipo==='lic_prox'){ac='Licencia vence';acCls='warn';}
         else if(top.tipo==='lic_venc'){ac='Licencia vencida';acCls='danger';}
       }
+      const vac=calcVacaciones(w);
       h+='<div class="worker-card" onclick="openDetail('+w.id+')">';
       h+='<div class="wc-row1"><div><div class="wc-name">'+w.nombre+'</div><div class="wc-rut">'+w.rut+'</div><div class="wc-cargo">'+(w.cargo||'')+'</div></div>';
       h+='<div class="wc-right"><div class="wc-liquido">'+liq(w.liquido)+'</div>'+badge(w)+'</div></div>';
-      h+='<div class="wc-row2"><div class="wc-info"><span class="badge" style="background:var(--bg3);color:var(--txt2)">'+(w.horario==='art22'?'Art.22':'Jornada')+'</span><span style="font-size:10px;color:var(--txt2)">'+fmt(w.inicio)+'</span></div>'+(ac?'<span class="wc-accion '+acCls+'">'+ac+'</span>':'')+'</div>';
+      h+='<div class="wc-row2"><div class="wc-info">';
+      h+='<span class="badge" style="background:var(--bg3);color:var(--txt2)">'+(w.horario==='art22'?'Art.22':'Jornada')+'</span>';
+      h+='<span class="badge" style="background:#DCFCE7;color:#166534"><i class="ti ti-beach" style="font-size:10px"></i> '+vac.saldo+' dias</span>';
+      h+='</div>'+(ac?'<span class="wc-accion '+acCls+'">'+ac+'</span>':'')+'</div>';
       h+='</div>';
     });
   });
@@ -199,24 +263,25 @@ function renderT(f){
   mc.innerHTML=h;
 }
 
+// ── Render Alertas ────────────────────────────────────────────
 function renderA(){
   const mc=document.getElementById('main-content');
   const all=[];
   workers.forEach(function(w){getAlerts(w).forEach(function(a){all.push({w:w,a:a});});});
   if(!all.length){mc.innerHTML='<div class="sec-title"><i class="ti ti-bell" style="color:var(--danger)"></i> Alertas activas</div><div class="empty"><i class="ti ti-circle-check" style="color:var(--ok)"></i>Sin alertas</div>';return;}
   const grupos=[
-    {key:'indef_ok',   label:'Conversion a indefinido requerida',color:'var(--purple)'},
-    {key:'indef_prox', label:'Proximos a cumplir 3 meses',       color:'var(--teal)'},
-    {key:'prorr_venc', label:'Prorroga vencida — urgente',       color:'var(--danger)'},
-    {key:'prorr_prox', label:'Prorroga vence en 10 dias',        color:'var(--warn)'},
-    {key:'vencido',    label:'Contratos vencidos',               color:'var(--danger)'},
-    {key:'vence',      label:'Contratos vencen en 10 dias',      color:'var(--warn)'},
-    {key:'anexo_venc', label:'Anexo HH.EE vencido',             color:'var(--danger)'},
-    {key:'anexo_prox', label:'Anexo HH.EE vence en 10 dias',    color:'var(--warn)'},
-    {key:'rut_venc',   label:'RUT vencido',                      color:'var(--danger)'},
-    {key:'rut_prox',   label:'RUT vence en 10 dias',             color:'var(--warn)'},
-    {key:'lic_venc',   label:'Licencia de conducir vencida',     color:'var(--danger)'},
-    {key:'lic_prox',   label:'Licencia vence en 10 dias',        color:'var(--warn)'},
+    {key:'indef_ok',   label:'Conversion a indefinido requerida', color:'var(--purple)'},
+    {key:'indef_prox', label:'Proximos a cumplir 3 meses',        color:'var(--teal)'},
+    {key:'prorr_venc', label:'Prorroga vencida — urgente',        color:'var(--danger)'},
+    {key:'prorr_prox', label:'Prorroga vence en 10 dias',         color:'var(--warn)'},
+    {key:'vencido',    label:'Contratos vencidos',                color:'var(--danger)'},
+    {key:'vence',      label:'Contratos vencen en 10 dias',       color:'var(--warn)'},
+    {key:'anexo_venc', label:'Anexo HH.EE vencido',              color:'var(--danger)'},
+    {key:'anexo_prox', label:'Anexo HH.EE vence en 10 dias',     color:'var(--warn)'},
+    {key:'rut_venc',   label:'RUT vencido',                       color:'var(--danger)'},
+    {key:'rut_prox',   label:'RUT vence en 10 dias',              color:'var(--warn)'},
+    {key:'lic_venc',   label:'Licencia de conducir vencida',      color:'var(--danger)'},
+    {key:'lic_prox',   label:'Licencia vence en 10 dias',         color:'var(--warn)'},
   ];
   const icons={danger:'alert-octagon',warn:'alert-triangle',purple:'arrows-exchange',blue:'info-circle'};
   let h='<div class="sec-title"><i class="ti ti-bell" style="color:var(--danger)"></i> Alertas activas ('+all.length+')</div>';
@@ -247,16 +312,18 @@ function renderA(){
   mc.innerHTML=h;
 }
 
+// ── Render Resumen ────────────────────────────────────────────
 function renderR(){
   const mc=document.getElementById('main-content');
-  const al=totalAl(),pr=workers.filter(w=>w.estado==='prorrogado').length,cv=workers.filter(w=>w.estado==='convertido_indefinido').length;
+  const al=totalAl(),pr=workers.filter(w=>w.estado==='prorrogado').length;
+  const indef=workers.filter(w=>w.tipo==='indefinido').length;
   const byCC={};workers.forEach(w=>{byCC[w.cc]=(byCC[w.cc]||0)+1;});
   let h='<div class="sec-title"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> Resumen</div>';
   h+='<div class="stat-grid">';
   h+='<div class="stat-card"><div class="stat-num">'+workers.length+'</div><div class="stat-label">Total trabajadores</div></div>';
   h+='<div class="stat-card"><div class="stat-num" style="color:var(--warn)">'+al+'</div><div class="stat-label">Con alertas</div></div>';
   h+='<div class="stat-card"><div class="stat-num" style="color:var(--teal)">'+pr+'</div><div class="stat-label">Prorrogados</div></div>';
-  h+='<div class="stat-card"><div class="stat-num" style="color:var(--ok)">'+cv+'</div><div class="stat-label">Convertidos</div></div>';
+  h+='<div class="stat-card"><div class="stat-num" style="color:var(--ok)">'+indef+'</div><div class="stat-label">Indefinidos</div></div>';
   h+='</div><div class="sec-title" style="margin-bottom:8px"><i class="ti ti-building"></i> Por obra</div>';
   Object.keys(byCC).sort().forEach(function(cc){
     const fa=workers.filter(w=>w.cc===cc&&hasAlert(w)).length,c=ccCfg(cc);
@@ -267,26 +334,52 @@ function renderR(){
   mc.innerHTML=h;
 }
 
+// ── Detalle trabajador ────────────────────────────────────────
 function openDetail(id){
   const w=workers.find(x=>x.id===id);if(!w)return;
   const als=getAlerts(w);
   const icons={danger:'alert-octagon',warn:'alert-triangle',purple:'arrows-exchange',blue:'info-circle'};
-  let ah=als.map(function(a){return '<div class="alert-box '+a.lvl+'" style="margin:8px 16px 0"><div class="alert-icon"><i class="ti ti-'+(icons[a.lvl]||'alert-triangle')+'"></i></div><div><div class="alert-msg">'+a.msg+'</div></div></div>';}).join('');
+  let ah=als.map(function(a){
+    return '<div class="alert-box '+a.lvl+'" style="margin:8px 16px 0"><div class="alert-icon"><i class="ti ti-'+(icons[a.lvl]||'alert-triangle')+'"></i></div><div><div class="alert-msg">'+a.msg+'</div></div></div>';
+  }).join('');
+
+  const vac=calcVacaciones(w);
+  const vacList=getVacList(w);
   const vAnexo=w.anexo_horas_extras?add3m(w.anexo_horas_extras):'';
+
+  let vacHtml='<div class="vac-section">';
+  vacHtml+='<div class="vac-title"><i class="ti ti-beach"></i> Vacaciones '+new Date().getFullYear()+'</div>';
+  vacHtml+='<div class="vac-stats">';
+  vacHtml+='<div class="vac-stat"><div class="vac-num">'+vac.acumulado+'</div><div class="vac-lbl">Acumulados</div></div>';
+  vacHtml+='<div class="vac-stat"><div class="vac-num" style="color:var(--warn)">'+vac.usados+'</div><div class="vac-lbl">Usados</div></div>';
+  vacHtml+='<div class="vac-stat"><div class="vac-num" style="color:var(--ok)">'+vac.saldo+'</div><div class="vac-lbl">Saldo</div></div>';
+  vacHtml+='</div>';
+  vacHtml+='<button class="action-btn ok" style="margin-top:8px;width:100%;justify-content:center" onclick="openVacModal('+id+')"><i class="ti ti-plus" style="font-size:12px"></i> Registrar vacaciones</button>';
+  if(vacList.length){
+    vacHtml+='<div style="margin-top:10px;font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em">Historial</div>';
+    vacList.slice().reverse().forEach(function(v){
+      vacHtml+='<div class="vac-item"><span>'+fmt(v.desde)+' al '+fmt(v.hasta)+'</span><span class="vac-dias">'+v.dias+' dias hab.</span></div>';
+    });
+  }
+  vacHtml+='</div>';
+
   const rows=[
     ['Cargo',w.cargo||'—'],['Obra',w.cc],
     ['Tipo',w.tipo==='indefinido'?'Indefinido':w.tipo==='obra_faena'?'Obra/Faena':'Plazo fijo'],
     ['Horario',w.horario==='art22'?'Art. 22':'Jornada ordinaria'],
     ['Ingreso',fmt(w.inicio)],['Liquido',liq(w.liquido)],
     ['Venc. contrato',fmt(w.venc1||w.venc2||'')||'—'],
-    ['Anexo HH.EE',w.anexo_horas_extras?'Ingresado: '+fmt(w.anexo_horas_extras)+' / Vence: '+fmt(vAnexo):'No registrado'],
+    ['Anexo HH.EE',w.anexo_horas_extras?'Ingresado: '+fmt(w.anexo_horas_extras)+(vAnexo?' / Vence: '+fmt(vAnexo):''):'No registrado'],
     ['Venc. RUT',fmt(w.venc_rut)||'—'],
     ['Licencia',w.tiene_licencia?'Si — vence: '+(fmt(w.venc_licencia)||'no registrado'):'No registrada'],
     ['Correo',w.correo||'—'],['Telefono',w.telefono||'—'],['Notas',w.notas||'—']
   ];
+
   document.getElementById('detail-content').innerHTML=
-    '<div class="detail-hero"><div class="detail-avatar">'+ini(w.nombre)+'</div><div class="detail-hero-info"><div class="name">'+w.nombre+'</div><div class="sub">'+w.rut+'</div><div style="margin-top:4px">'+badge(w)+'</div></div></div>'+ah+
+    '<div class="detail-hero"><div class="detail-avatar">'+ini(w.nombre)+'</div><div class="detail-hero-info"><div class="name">'+w.nombre+'</div><div class="sub">'+w.rut+'</div><div style="margin-top:4px">'+badge(w)+'</div></div></div>'+
+    ah+vacHtml+
     rows.map(function(r){return '<div class="detail-row"><span class="detail-label">'+r[0]+'</span><span class="detail-val">'+r[1]+'</span></div>';}).join('');
+
   document.getElementById('detail-actions').innerHTML=
     '<button class="btn" onclick="closeDetail()">Cerrar</button>'+
     '<button class="btn primary" onclick="closeDetail();openForm('+id+')"><i class="ti ti-edit"></i> Editar</button>'+
@@ -295,6 +388,54 @@ function openDetail(id){
 }
 function closeDetail(){document.getElementById('detail-overlay').classList.remove('open');}
 
+// ── Modal Vacaciones ──────────────────────────────────────────
+function openVacModal(id){
+  vacWorker=workers.find(x=>x.id===id);
+  if(!vacWorker)return;
+  document.getElementById('vac-nombre').textContent=vacWorker.nombre;
+  const vac=calcVacaciones(vacWorker);
+  document.getElementById('vac-saldo').textContent=vac.saldo+' dias habiles disponibles';
+  document.getElementById('vac-desde').value='';
+  document.getElementById('vac-hasta').value='';
+  document.getElementById('vac-dias-calc').textContent='';
+  document.getElementById('vac-modal').classList.add('open');
+}
+function closeVacModal(){document.getElementById('vac-modal').classList.remove('open');}
+
+function calcVacDias(){
+  const desde=document.getElementById('vac-desde').value;
+  const hasta=document.getElementById('vac-hasta').value;
+  if(desde&&hasta&&desde<=hasta){
+    const dias=diasHabilesEntreFechas(desde,hasta);
+    document.getElementById('vac-dias-calc').textContent=dias+' dias habiles';
+  }
+}
+
+async function saveVacaciones(){
+  if(!vacWorker)return;
+  const desde=document.getElementById('vac-desde').value;
+  const hasta=document.getElementById('vac-hasta').value;
+  if(!desde||!hasta){alert('Ingresa las fechas de inicio y termino.');return;}
+  if(desde>hasta){alert('La fecha de inicio debe ser anterior al termino.');return;}
+  const dias=diasHabilesEntreFechas(desde,hasta);
+  const vac=calcVacaciones(vacWorker);
+  if(dias>vac.saldo){
+    if(!confirm('El trabajador solo tiene '+vac.saldo+' dias disponibles. Deseas registrar igual '+dias+' dias?'))return;
+  }
+  const lista=getVacList(vacWorker);
+  lista.push({desde,hasta,dias,registrado:today()});
+  const idx=workers.findIndex(x=>x.id===vacWorker.id);
+  workers[idx].vacaciones_usadas=lista;
+  try{
+    await sbPatch(vacWorker.id,{vacaciones_usadas:JSON.stringify(lista)});
+    toast('Vacaciones registradas — '+dias+' dias habiles');
+  }catch(e){console.error(e);toast('Error al guardar','err');}
+  closeVacModal();
+  closeDetail();
+  openDetail(vacWorker.id);
+}
+
+// ── Formulario trabajador ─────────────────────────────────────
 function openForm(id){
   editingId=id||null;const f=id?workers.find(x=>x.id===id):null;
   document.getElementById('modal-title').textContent=id?'Editar trabajador':'Agregar trabajador';
@@ -338,12 +479,15 @@ async function saveWorker(){
   const btn=document.getElementById('btn-guardar');btn.disabled=true;
   const data={nombre,rut,cargo,tipo,inicio,fin:fin||null,liquido:Number(liquido),horario,correo,telefono,notas,cc,
               venc1:'',venc2:'',venc3:'',contrato_por:'',
-              anexo_horas_extras:anexo,venc_rut:venc_rut,tiene_licencia:tiene_licencia,venc_licencia:venc_licencia};
+              anexo_horas_extras:anexo,venc_rut,tiene_licencia,venc_licencia,
+              vacaciones_usadas:'[]',vacaciones_saldo:0};
   try{
     if(editingId){
       const i=workers.findIndex(x=>x.id===editingId);
-      workers[i]={...workers[i],...data};
-      await sbPatch(editingId,data);toast('Actualizado');
+      const upd={nombre,rut,cargo,tipo,inicio,fin:fin||null,liquido:Number(liquido),horario,correo,telefono,notas,cc,
+                 anexo_horas_extras:anexo,venc_rut,tiene_licencia,venc_licencia};
+      workers[i]={...workers[i],...upd};
+      await sbPatch(editingId,upd);toast('Actualizado');
     }else{
       const nw={id:nextId++,...data,estado:null};
       workers.push(nw);await sbPost(nw);toast('Agregado');
@@ -367,6 +511,7 @@ function toast(msg,type){
   t.classList.add('show');setTimeout(function(){t.classList.remove('show');},3000);
 }
 
+// ── Init ──────────────────────────────────────────────────────
 async function init(){
   const ls=document.getElementById('loading-screen'),mc=document.getElementById('main-content');
   try{
@@ -391,4 +536,5 @@ async function init(){
 
 document.getElementById('modal-overlay').addEventListener('click',function(e){if(e.target===this)closeForm();});
 document.getElementById('detail-overlay').addEventListener('click',function(e){if(e.target===this)closeDetail();});
+document.getElementById('vac-modal').addEventListener('click',function(e){if(e.target===this)closeVacModal();});
 init();
