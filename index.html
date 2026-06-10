@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>RRHH — Empresas Salfate</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -58,7 +58,7 @@
 
 <main id="main-content" class="main-content" style="display:none"></main>
 
-<!-- MODAL FORMULARIO -->
+<!-- MODAL FORMULARIO TRABAJADOR -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <div class="modal-header">
@@ -66,7 +66,6 @@
       <button class="modal-close" onclick="closeForm()"><i class="ti ti-x"></i></button>
     </div>
     <div class="form-fields">
-
       <div class="form-section-title">Datos personales</div>
       <div class="form-group full"><label>Nombre completo *</label><input id="f-nombre" placeholder="JUAN PEREZ GONZALEZ"></div>
       <div class="form-group"><label>RUT *</label><input id="f-rut" placeholder="12.345.678-9"></div>
@@ -125,7 +124,6 @@
 
       <div class="form-section-title">Otros</div>
       <div class="form-group full"><label>Notas</label><input id="f-notas" placeholder="Observaciones adicionales"></div>
-
     </div>
     <div class="form-actions">
       <button class="btn" onclick="closeForm()">Cancelar</button>
@@ -146,6 +144,37 @@
   </div>
 </div>
 
-<script src="./assets/app/app.js"></script>
+<!-- MODAL VACACIONES -->
+<div class="modal-overlay" id="vac-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title"><i class="ti ti-beach"></i> Registrar vacaciones</span>
+      <button class="modal-close" onclick="closeVacModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-fields">
+      <div class="form-group full">
+        <div style="font-size:14px;font-weight:600" id="vac-nombre"></div>
+        <div style="font-size:13px;color:var(--ok);margin-top:4px" id="vac-saldo"></div>
+      </div>
+      <div class="form-group">
+        <label>Fecha inicio *</label>
+        <input id="vac-desde" type="date" onchange="calcVacDias()">
+      </div>
+      <div class="form-group">
+        <label>Fecha termino *</label>
+        <input id="vac-hasta" type="date" onchange="calcVacDias()">
+      </div>
+      <div class="form-group full">
+        <div style="font-size:13px;font-weight:600;color:var(--blue)" id="vac-dias-calc"></div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeVacModal()">Cancelar</button>
+      <button class="btn primary" onclick="saveVacaciones()"><i class="ti ti-device-floppy"></i> Registrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
