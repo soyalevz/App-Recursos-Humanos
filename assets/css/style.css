@@ -203,32 +203,38 @@ body{font-family:var(--font);color:var(--txt);background:var(--bg3);min-height:1
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 .vac-tope { font-size: 11px; opacity: .7; }
-.vac-year-block {
-  border-top: 1px solid var(--bd);
-  padding: 12px 14px;
+
+.vac-resumen {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--bd);
+}
+.vac-stat-box {
   background: var(--bg);
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  padding: 8px 4px;
+  text-align: center;
 }
-.vac-year-header {
+.vac-n { font-size: 18px; font-weight: 700; }
+.vac-l { font-size: 10px; color: var(--txt2); margin-top: 2px; }
+
+.vac-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
-}
-.vac-year-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--txt);
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
 }
 .vac-btn-sm {
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--bd);
@@ -237,36 +243,58 @@ body{font-family:var(--font);color:var(--txt);background:var(--bg3);min-height:1
   font-family: var(--font);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  white-space: nowrap;
+  gap: 5px;
 }
 .vac-btn-sm:hover { background: var(--bd); }
-.vac-stats-row {
-  display: grid;
-  grid-template-columns: repeat(4,1fr);
-  gap: 6px;
-  margin-bottom: 10px;
+
+.vac-ciclos-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt2);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 10px 14px 4px;
 }
-.vac-stat-box {
-  background: var(--bg2);
-  border-radius: 6px;
-  border: 1px solid var(--bd);
-  padding: 8px 4px;
-  text-align: center;
+.vac-ciclo {
+  padding: 8px 14px;
+  border-top: 1px solid var(--bd);
 }
-.vac-n { font-size: 18px; font-weight: 700; }
-.vac-l { font-size: 10px; color: var(--txt2); margin-top: 2px; }
-.vac-hist { margin-top: 8px; }
+.vac-ciclo.completo { background: var(--bg); }
+.vac-ciclo.en-curso { background: #EFF6FF; }
+.vac-ciclo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.vac-ciclo-label { font-size: 12px; display: flex; align-items: center; gap: 5px; }
+.vac-ciclo-dias { font-size: 12px; font-weight: 700; color: var(--ok); }
+.vac-ciclo-usados { font-size: 11px; color: var(--warn); margin-top: 3px; }
+
+.vac-hist-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt2);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 10px 14px 4px;
+  border-top: 1px solid var(--bd);
+}
 .vac-item {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--bd);
+  padding: 7px 14px;
+  border-top: 1px solid var(--bd);
   gap: 8px;
 }
-.vac-item:last-child { border-bottom: none; }
-.vac-item-info { flex: 1; font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.vac-item-info {
+  flex: 1;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .vac-d-badge {
   background: #FEF9C3;
   color: #854D0E;
@@ -276,9 +304,9 @@ body{font-family:var(--font);color:var(--txt);background:var(--bg3);min-height:1
   border-radius: 4px;
   white-space: nowrap;
 }
-.vac-nota { font-size: 11px; color: var(--txt2); margin-top: 2px; }
+.vac-nota { font-size: 11px; color: var(--txt2); margin-top: 2px; width: 100%; }
 .vac-del {
-  width: 24px; height: 24px;
+  width: 26px; height: 26px;
   border-radius: 5px;
   border: 1px solid var(--bd);
   background: transparent;

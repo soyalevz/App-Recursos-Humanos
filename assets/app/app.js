@@ -54,22 +54,30 @@ async function sbDel(id){
 function dl(fin){if(!fin)return null;return Math.ceil((new Date(fin+'T00:00:00')-new Date())/864e5);}
 function add3m(d){const x=new Date(d+'T00:00:00');x.setMonth(x.getMonth()+3);return x.toISOString().slice(0,10);}
 function add1m(d){const x=new Date(d+'T00:00:00');x.setMonth(x.getMonth()+1);return x.toISOString().slice(0,10);}
+function addYears(d,n){const x=new Date(d+'T00:00:00');x.setFullYear(x.getFullYear()+n);return x.toISOString().slice(0,10);}
 function today(){return new Date().toISOString().slice(0,10);}
 function age(d){return Math.floor((new Date()-new Date(d+'T00:00:00'))/864e5);}
 function diff(a,b){return Math.ceil((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);}
 function fmt(d){if(!d)return '—';const p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0];}
 function liq(s){return '$'+Number(s).toLocaleString('es-CL');}
 
-// ── Vacaciones ────────────────────────────────────────────────
+// ── VACACIONES (Ley chilena) ──────────────────────────────────
+// Ciclo: desde fecha de ingreso, cada 12 meses = 15 dias habiles
+// Ejemplo: ingreso 12/03/2025
+//   Periodo 1: 12/03/2025 → 11/03/2026 = 15 dias (devengados mes a mes: 1.25/mes)
+//   Periodo 2: 12/03/2026 → 11/03/2027 = 15 dias (acumulando desde 12/03/2026)
+//   Tope: 30 dias habiles (2 periodos)
+// Los "periodos" aqui son ciclos anuales desde fecha de ingreso, no años calendario
+
 function getVacData(w){
-  let data={ajuste_2025:0,ajuste_2026:0,periodos:[]};
+  let data={ajuste:0,periodos:[]};
   if(!w.vacaciones_usadas)return data;
   try{
     const raw=typeof w.vacaciones_usadas==='string'?JSON.parse(w.vacaciones_usadas):w.vacaciones_usadas;
     if(Array.isArray(raw)){data.periodos=raw;}
     else if(typeof raw==='object'&&raw!==null){
-      data.ajuste_2025=Number(raw.ajuste_2025)||0;
-      data.ajuste_2026=Number(raw.ajuste_2026)||0;
+      // compatibilidad con formato anterior
+      data.ajuste=Number(raw.ajuste||raw.ajuste_2025||raw.ajuste_2026||0);
       data.periodos=Array.isArray(raw.periodos)?raw.periodos:[];
     }
   }catch(e){}
@@ -84,37 +92,61 @@ function diasHabiles(desde,hasta){
   return count;
 }
 
-function mesesTrabajadosEnAño(inicio,año){
-  const iniAño=año+'-01-01';
-  const finAño=año===new Date().getFullYear()?today():año+'-12-31';
-  const desde=inicio>iniAño?inicio:iniAño;
-  if(desde>finAño)return 0;
+// Calcula meses completos entre dos fechas
+function mesesEntre(desde,hasta){
   const d1=new Date(desde+'T00:00:00');
-  const d2=new Date(finAño+'T00:00:00');
-  let meses=(d2.getFullYear()-d1.getFullYear())*12+(d2.getMonth()-d1.getMonth());
-  if(d2.getDate()>=d1.getDate())meses++;
-  return Math.max(0,Math.min(12,meses));
+  const d2=new Date(hasta+'T00:00:00');
+  let m=(d2.getFullYear()-d1.getFullYear())*12+(d2.getMonth()-d1.getMonth());
+  if(d2.getDate()<d1.getDate())m--;
+  return Math.max(0,m);
+}
+
+// Devuelve los ciclos anuales del trabajador hasta hoy
+// Cada ciclo: {num, desde, hasta, devengado, label}
+function getCiclos(inicio){
+  const ciclos=[];
+  const hoy=today();
+  let cicloInicio=inicio;
+  let num=1;
+  while(cicloInicio<=hoy){
+    const cicloFin=addYears(cicloInicio,1);
+    // fin real del ciclo: el dia antes del aniversario siguiente
+    const finReal=new Date(cicloFin+'T00:00:00');
+    finReal.setDate(finReal.getDate()-1);
+    const finRealStr=finReal.toISOString().slice(0,10);
+    const hoyDate=new Date(hoy+'T00:00:00');
+    const cicloFinDate=new Date(cicloFin+'T00:00:00');
+    const esCicloActual=hoyDate<cicloFinDate;
+    if(esCicloActual){
+      // ciclo en curso: cuantos meses lleva
+      const meses=mesesEntre(cicloInicio,hoy);
+      const devengado=Math.round(meses*1.25*100)/100;
+      ciclos.push({num,desde:cicloInicio,hasta:cicloFin,finReal:finRealStr,devengado,completo:false,
+        label:'Ciclo '+num+' ('+fmt(cicloInicio)+' — en curso)'});
+    } else {
+      // ciclo completo = 15 dias
+      ciclos.push({num,desde:cicloInicio,hasta:cicloFin,finReal:finRealStr,devengado:15,completo:true,
+        label:'Ciclo '+num+' ('+fmt(cicloInicio)+' — '+fmt(finRealStr)+')'});
+    }
+    cicloInicio=cicloFin;
+    num++;
+    if(num>20)break; // seguridad
+  }
+  return ciclos;
 }
 
 function calcVac(w){
+  if(!w.inicio)return{ciclos:[],devengadoTotal:0,ajuste:0,usados:0,saldo:0,saldoTotal:0};
   const vd=getVacData(w);
-  const inicio=w.inicio||today();
-
-  const m2025=mesesTrabajadosEnAño(inicio,2025);
-  const dev2025=Math.round(m2025*1.25*100)/100;
-  const aj2025=vd.ajuste_2025||0;
-  const us2025=vd.periodos.filter(p=>p.año===2025).reduce(function(s,p){return s+(p.dias||0);},0);
-  const sal2025=Math.max(0,Math.round((dev2025+aj2025-us2025)*100)/100);
-
-  const m2026=mesesTrabajadosEnAño(inicio,2026);
-  const dev2026=Math.round(m2026*1.25*100)/100;
-  const aj2026=vd.ajuste_2026||0;
-  const us2026=vd.periodos.filter(p=>p.año===2026).reduce(function(s,p){return s+(p.dias||0);},0);
-  const sal2026=Math.max(0,Math.round((dev2026+aj2026-us2026)*100)/100);
-
-  const saldoTotal=Math.min(30,Math.round((sal2025+sal2026)*100)/100);
-
-  return{m2025,dev2025,aj2025,us2025,sal2025,m2026,dev2026,aj2026,us2026,sal2026,saldoTotal,periodos:vd.periodos};
+  const ciclos=getCiclos(w.inicio);
+  const devengadoTotal=ciclos.reduce(function(s,c){return s+c.devengado;},0);
+  const ajuste=vd.ajuste||0;
+  const usados=vd.periodos.reduce(function(s,p){return s+(p.dias||0);},0);
+  // Saldo bruto con ajuste manual
+  const saldoBruto=Math.max(0,Math.round((devengadoTotal+ajuste-usados)*100)/100);
+  // Tope legal: 2 periodos = 30 dias habiles
+  const saldoTotal=Math.min(30,saldoBruto);
+  return{ciclos,devengadoTotal:Math.round(devengadoTotal*100)/100,ajuste,usados,saldo:saldoBruto,saldoTotal,periodos:vd.periodos};
 }
 
 // ── Alertas ───────────────────────────────────────────────────
@@ -251,7 +283,7 @@ function renderT(f){
       h+='<div class="wc-right"><div class="wc-liquido">'+liq(w.liquido)+'</div>'+badge(w)+'</div></div>';
       h+='<div class="wc-row2"><div class="wc-info">';
       h+='<span class="badge" style="background:var(--bg3);color:var(--txt2)">'+(w.horario==='art22'?'Art.22':'Jornada')+'</span>';
-      h+='<span class="badge" style="background:#DCFCE7;color:#166534"><i class="ti ti-beach" style="font-size:10px"></i> '+vac.saldoTotal+'d</span>';
+      h+='<span class="badge" style="background:#DCFCE7;color:#166534"><i class="ti ti-beach" style="font-size:10px"></i> '+vac.saldoTotal+'d vac.</span>';
       h+='</div>'+(ac?'<span class="wc-accion '+acCls+'">'+ac+'</span>':'')+'</div>';
       h+='</div>';
     });
@@ -339,38 +371,50 @@ function openDetail(id){
 
   const vac=calcVac(w);
 
-  function vacYearBlock(año,dev,aj,us,sal,periodos){
-    let h='<div class="vac-year-block">';
-    h+='<div class="vac-year-header">';
-    h+='<span class="vac-year-title"><i class="ti ti-calendar-stats"></i> '+año+'</span>';
-    h+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+','+año+')"><i class="ti ti-pencil" style="font-size:11px"></i> Ajustar</button>';
-    h+='<button class="vac-btn-sm" onclick="openVacPeriodo('+id+','+año+')"><i class="ti ti-plus" style="font-size:11px"></i> Periodo</button>';
-    h+='</div>';
-    h+='<div class="vac-stats-row">';
-    h+='<div class="vac-stat-box"><div class="vac-n">'+dev+'</div><div class="vac-l">Devengado</div></div>';
-    h+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--blue)">'+aj+'</div><div class="vac-l">Ajuste</div></div>';
-    h+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--warn)">'+us+'</div><div class="vac-l">Usados</div></div>';
-    h+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--ok)">'+sal+'</div><div class="vac-l">Saldo</div></div>';
-    h+='</div>';
-    if(periodos.length){
-      h+='<div class="vac-hist">';
-      periodos.forEach(function(p){
-        h+='<div class="vac-item">';
-        h+='<div class="vac-item-info"><span>'+fmt(p.desde)+' — '+fmt(p.hasta)+'</span><span class="vac-d-badge">'+p.dias+'d</span></div>';
-        if(p.nota)h+='<div class="vac-nota">'+p.nota+'</div>';
-        h+='<button class="vac-del" onclick="delPeriodo('+id+',\''+p.id+'\')"><i class="ti ti-trash"></i></button>';
-        h+='</div>';
-      });
-      h+='</div>';
-    }
-    h+='</div>';
-    return h;
-  }
-
+  // Seccion vacaciones
   let vacHtml='<div class="vac-section">';
-  vacHtml+='<div class="vac-total"><i class="ti ti-beach"></i> Saldo total: <strong>'+vac.saldoTotal+' dias habiles</strong><span class="vac-tope"> (max. 30 por ley)</span></div>';
-  vacHtml+=vacYearBlock(2025,vac.dev2025,vac.aj2025,vac.us2025,vac.sal2025,vac.periodos.filter(function(p){return p.año===2025;}));
-  vacHtml+=vacYearBlock(2026,vac.dev2026,vac.aj2026,vac.us2026,vac.sal2026,vac.periodos.filter(function(p){return p.año===2026;}));
+  vacHtml+='<div class="vac-total"><i class="ti ti-beach"></i> Saldo disponible: <strong>'+vac.saldoTotal+' dias habiles</strong><span class="vac-tope"> (tope legal: 30 dias = 2 periodos)</span></div>';
+
+  // Resumen compacto
+  vacHtml+='<div class="vac-resumen">';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n">'+vac.devengadoTotal+'</div><div class="vac-l">Total devengado</div></div>';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--blue)">'+vac.ajuste+'</div><div class="vac-l">Ajuste manual</div></div>';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--warn)">'+vac.usados+'</div><div class="vac-l">Dias usados</div></div>';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--ok)">'+vac.saldoTotal+'</div><div class="vac-l">Saldo final</div></div>';
+  vacHtml+='</div>';
+
+  // Botones accion
+  vacHtml+='<div class="vac-actions">';
+  vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+')"><i class="ti ti-pencil" style="font-size:11px"></i> Ajuste manual</button>';
+  vacHtml+='<button class="vac-btn-sm" onclick="openVacPeriodo('+id+')"><i class="ti ti-plus" style="font-size:11px"></i> Registrar periodo</button>';
+  vacHtml+='</div>';
+
+  // Ciclos anuales desde fecha de ingreso
+  vacHtml+='<div class="vac-ciclos-title">Ciclos anuales desde fecha de ingreso</div>';
+  vac.ciclos.forEach(function(c){
+    const usadosEnCiclo=vac.periodos.filter(function(p){
+      return p.desde>=c.desde&&p.desde<c.hasta;
+    }).reduce(function(s,p){return s+(p.dias||0);},0);
+    vacHtml+='<div class="vac-ciclo '+(c.completo?'completo':'en-curso')+'">';
+    vacHtml+='<div class="vac-ciclo-header">';
+    vacHtml+='<span class="vac-ciclo-label">'+(c.completo?'<i class="ti ti-check" style="color:var(--ok)"></i>':'<i class="ti ti-clock" style="color:var(--blue)"></i>')+' '+c.label+'</span>';
+    vacHtml+='<span class="vac-ciclo-dias">'+c.devengado+' dias</span>';
+    vacHtml+='</div>';
+    if(usadosEnCiclo>0)vacHtml+='<div class="vac-ciclo-usados">Usados en este ciclo: '+usadosEnCiclo+' dias</div>';
+    vacHtml+='</div>';
+  });
+
+  // Historial de periodos tomados
+  if(vac.periodos.length){
+    vacHtml+='<div class="vac-hist-title">Historial de periodos tomados</div>';
+    vac.periodos.slice().reverse().forEach(function(p){
+      vacHtml+='<div class="vac-item">';
+      vacHtml+='<div class="vac-item-info"><span>'+fmt(p.desde)+' — '+fmt(p.hasta)+'</span><span class="vac-d-badge">'+p.dias+' dias hab.</span></div>';
+      if(p.nota)vacHtml+='<div class="vac-nota">'+p.nota+'</div>';
+      vacHtml+='<button class="vac-del" onclick="delPeriodo('+id+',\''+p.id+'\')"><i class="ti ti-trash"></i></button>';
+      vacHtml+='</div>';
+    });
+  }
   vacHtml+='</div>';
 
   const vAnexo=w.anexo_horas_extras?add3m(w.anexo_horas_extras):'';
@@ -400,37 +444,33 @@ function openDetail(id){
 function closeDetail(){document.getElementById('detail-overlay').classList.remove('open');}
 
 // ── Modal ajuste manual ───────────────────────────────────────
-function openVacAjuste(id,año){
+function openVacAjuste(id){
   vacWorkerId=id;
   const w=workers.find(x=>x.id===id);if(!w)return;
   const vd=getVacData(w);
-  document.getElementById('vaj-titulo').textContent='Ajuste manual '+año+' — '+w.nombre.split(' ')[0];
-  document.getElementById('vaj-desc').textContent='Dias adicionales o de arrastre para '+año+' (puede ser negativo para descontar)';
-  document.getElementById('vaj-año').value=año;
-  document.getElementById('vaj-valor').value=año===2025?vd.ajuste_2025:vd.ajuste_2026;
+  document.getElementById('vaj-titulo').textContent='Ajuste manual — '+w.nombre.split(' ')[0];
+  document.getElementById('vaj-valor').value=vd.ajuste||0;
   document.getElementById('vaj-modal').classList.add('open');
 }
 function closeVacAjuste(){document.getElementById('vaj-modal').classList.remove('open');}
 
 async function saveVacAjuste(){
   const id=vacWorkerId;
-  const año=Number(document.getElementById('vaj-año').value);
   const valor=Number(document.getElementById('vaj-valor').value)||0;
   const idx=workers.findIndex(x=>x.id===id);if(idx<0)return;
   const vd=getVacData(workers[idx]);
-  if(año===2025)vd.ajuste_2025=valor;else vd.ajuste_2026=valor;
+  vd.ajuste=valor;
   workers[idx].vacaciones_usadas=JSON.stringify(vd);
   try{await sbPatch(id,{vacaciones_usadas:JSON.stringify(vd)});toast('Ajuste guardado');}
   catch(e){console.error(e);toast('Error','err');}
   closeVacAjuste();closeDetail();openDetail(id);
 }
 
-// ── Modal periodo de vacaciones ───────────────────────────────
-function openVacPeriodo(id,año){
+// ── Modal periodo vacaciones ──────────────────────────────────
+function openVacPeriodo(id){
   vacWorkerId=id;
   const w=workers.find(x=>x.id===id);if(!w)return;
-  document.getElementById('vp-titulo').textContent='Periodo vacaciones '+año+' — '+w.nombre.split(' ')[0];
-  document.getElementById('vp-año').value=año;
+  document.getElementById('vp-titulo').textContent='Periodo vacaciones — '+w.nombre.split(' ')[0];
   document.getElementById('vp-desde').value='';
   document.getElementById('vp-hasta').value='';
   document.getElementById('vp-dias').textContent='';
@@ -449,7 +489,6 @@ function calcVacDias(){
 
 async function saveVacPeriodo(){
   const id=vacWorkerId;
-  const año=Number(document.getElementById('vp-año').value);
   const desde=document.getElementById('vp-desde').value;
   const hasta=document.getElementById('vp-hasta').value;
   const nota=document.getElementById('vp-nota').value.trim();
@@ -458,7 +497,7 @@ async function saveVacPeriodo(){
   const dias=diasHabiles(desde,hasta);
   const idx=workers.findIndex(x=>x.id===id);if(idx<0)return;
   const vd=getVacData(workers[idx]);
-  vd.periodos.push({id:Date.now().toString(),año,desde,hasta,dias,nota,registrado:today()});
+  vd.periodos.push({id:Date.now().toString(),desde,hasta,dias,nota,registrado:today()});
   workers[idx].vacaciones_usadas=JSON.stringify(vd);
   try{await sbPatch(id,{vacaciones_usadas:JSON.stringify(vd)});toast('Periodo registrado — '+dias+' dias');}
   catch(e){console.error(e);toast('Error','err');}
