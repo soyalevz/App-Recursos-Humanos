@@ -405,13 +405,13 @@ function openDetail(id){
   // Ajustes por año
   vacHtml+='<div class="vac-ajustes-row">';
   vacHtml+='<div class="vac-ajuste-box">';
-  vacHtml+='<div class="vac-ajuste-label">Ajuste 2025</div>';
-  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2025>0?'pos':vac.ajuste_2025<0?'neg':'')+'">'+vac.ajuste_2025+' dias</div>';
+  vacHtml+='<div class="vac-ajuste-info"><div class="vac-ajuste-label">Ajuste 2025</div>';
+  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2025>0?'pos':vac.ajuste_2025<0?'neg':'')+'">'+vac.ajuste_2025+'d</div></div>';
   vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+',2025)"><i class="ti ti-pencil" style="font-size:10px"></i> Editar</button>';
   vacHtml+='</div>';
   vacHtml+='<div class="vac-ajuste-box">';
-  vacHtml+='<div class="vac-ajuste-label">Ajuste 2026</div>';
-  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2026>0?'pos':vac.ajuste_2026<0?'neg':'')+'">'+vac.ajuste_2026+' dias</div>';
+  vacHtml+='<div class="vac-ajuste-info"><div class="vac-ajuste-label">Ajuste 2026</div>';
+  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2026>0?'pos':vac.ajuste_2026<0?'neg':'')+'">'+vac.ajuste_2026+'d</div></div>';
   vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+',2026)"><i class="ti ti-pencil" style="font-size:10px"></i> Editar</button>';
   vacHtml+='</div>';
   vacHtml+='</div>';
