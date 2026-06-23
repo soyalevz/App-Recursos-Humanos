@@ -70,14 +70,18 @@ function liq(s){return '$'+Number(s).toLocaleString('es-CL');}
 // Los "periodos" aqui son ciclos anuales desde fecha de ingreso, no años calendario
 
 function getVacData(w){
-  let data={ajuste:0,periodos:[]};
+  let data={ajuste_2025:0,ajuste_2026:0,periodos:[]};
   if(!w.vacaciones_usadas)return data;
   try{
     const raw=typeof w.vacaciones_usadas==='string'?JSON.parse(w.vacaciones_usadas):w.vacaciones_usadas;
     if(Array.isArray(raw)){data.periodos=raw;}
     else if(typeof raw==='object'&&raw!==null){
-      // compatibilidad con formato anterior
-      data.ajuste=Number(raw.ajuste||raw.ajuste_2025||raw.ajuste_2026||0);
+      data.ajuste_2025=Number(raw.ajuste_2025||0);
+      data.ajuste_2026=Number(raw.ajuste_2026||0);
+      // compatibilidad con ajuste unico anterior
+      if(raw.ajuste&&!raw.ajuste_2025&&!raw.ajuste_2026){
+        data.ajuste_2025=Number(raw.ajuste||0);
+      }
       data.periodos=Array.isArray(raw.periodos)?raw.periodos:[];
     }
   }catch(e){}
@@ -136,17 +140,34 @@ function getCiclos(inicio){
 }
 
 function calcVac(w){
-  if(!w.inicio)return{ciclos:[],devengadoTotal:0,ajuste:0,usados:0,saldo:0,saldoTotal:0};
+  if(!w.inicio)return{ciclos:[],ciclosActivos:[],dev1:0,dev2:0,ajuste_2025:0,ajuste_2026:0,usados:0,saldoTotal:0,periodos:[]};
   const vd=getVacData(w);
-  const ciclos=getCiclos(w.inicio);
-  const devengadoTotal=ciclos.reduce(function(s,c){return s+c.devengado;},0);
-  const ajuste=vd.ajuste||0;
+  const todosLosCiclos=getCiclos(w.inicio);
+
+  // Solo los ultimos 2 ciclos son validos (ley: max 2 periodos acumulados)
+  // El penultimo ciclo completo + el ciclo actual en curso
+  const ciclosCompletos=todosLosCiclos.filter(function(c){return c.completo;});
+  const cicloEnCurso=todosLosCiclos.find(function(c){return !c.completo;});
+
+  // Ultimo ciclo completo (el mas reciente)
+  const ultimoCompleto=ciclosCompletos.length?ciclosCompletos[ciclosCompletos.length-1]:null;
+
+  // Ciclos activos para mostrar: ultimo completo + en curso
+  const ciclosActivos=[];
+  if(ultimoCompleto)ciclosActivos.push(ultimoCompleto);
+  if(cicloEnCurso)ciclosActivos.push(cicloEnCurso);
+
+  const dev1=ultimoCompleto?ultimoCompleto.devengado:0;
+  const dev2=cicloEnCurso?cicloEnCurso.devengado:0;
+  const aj2025=vd.ajuste_2025||0;
+  const aj2026=vd.ajuste_2026||0;
   const usados=vd.periodos.reduce(function(s,p){return s+(p.dias||0);},0);
-  // Saldo bruto con ajuste manual
-  const saldoBruto=Math.max(0,Math.round((devengadoTotal+ajuste-usados)*100)/100);
-  // Tope legal: 2 periodos = 30 dias habiles
+  const saldoBruto=Math.max(0,Math.round((dev1+dev2+aj2025+aj2026-usados)*100)/100);
   const saldoTotal=Math.min(30,saldoBruto);
-  return{ciclos,devengadoTotal:Math.round(devengadoTotal*100)/100,ajuste,usados,saldo:saldoBruto,saldoTotal,periodos:vd.periodos};
+
+  return{ciclos:todosLosCiclos,ciclosActivos,dev1:Math.round(dev1*100)/100,
+         dev2:Math.round(dev2*100)/100,ajuste_2025:aj2025,ajuste_2026:aj2026,
+         usados,saldoTotal,periodos:vd.periodos};
 }
 
 // ── Alertas ───────────────────────────────────────────────────
@@ -283,7 +304,7 @@ function renderT(f){
       h+='<div class="wc-right"><div class="wc-liquido">'+liq(w.liquido)+'</div>'+badge(w)+'</div></div>';
       h+='<div class="wc-row2"><div class="wc-info">';
       h+='<span class="badge" style="background:var(--bg3);color:var(--txt2)">'+(w.horario==='art22'?'Art.22':'Jornada')+'</span>';
-      h+='<span class="badge" style="background:#DCFCE7;color:#166534"><i class="ti ti-beach" style="font-size:10px"></i> '+vac.saldoTotal+'d vac.</span>';
+      h+='<span class="badge" style="background:#DCFCE7;color:#166534"><i class="ti ti-beach" style="font-size:10px"></i> '+vac.saldoTotal+'d</span>';
       h+='</div>'+(ac?'<span class="wc-accion '+acCls+'">'+ac+'</span>':'')+'</div>';
       h+='</div>';
     });
@@ -375,23 +396,33 @@ function openDetail(id){
   let vacHtml='<div class="vac-section">';
   vacHtml+='<div class="vac-total"><i class="ti ti-beach"></i> Saldo disponible: <strong>'+vac.saldoTotal+' dias habiles</strong><span class="vac-tope"> (tope legal: 30 dias = 2 periodos)</span></div>';
 
-  // Resumen compacto
+  // Resumen limpio
   vacHtml+='<div class="vac-resumen">';
-  vacHtml+='<div class="vac-stat-box"><div class="vac-n">'+vac.devengadoTotal+'</div><div class="vac-l">Total devengado</div></div>';
-  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--blue)">'+vac.ajuste+'</div><div class="vac-l">Ajuste manual</div></div>';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--ok)">'+vac.saldoTotal+'</div><div class="vac-l">Saldo disponible</div></div>';
   vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--warn)">'+vac.usados+'</div><div class="vac-l">Dias usados</div></div>';
-  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--ok)">'+vac.saldoTotal+'</div><div class="vac-l">Saldo final</div></div>';
+  vacHtml+='<div class="vac-stat-box"><div class="vac-n" style="color:var(--blue)">'+Math.round((vac.ajuste_2025+vac.ajuste_2026)*100)/100+'</div><div class="vac-l">Ajuste total</div></div>';
   vacHtml+='</div>';
-
-  // Botones accion
+  // Ajustes por año
+  vacHtml+='<div class="vac-ajustes-row">';
+  vacHtml+='<div class="vac-ajuste-box">';
+  vacHtml+='<div class="vac-ajuste-label">Ajuste 2025</div>';
+  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2025>0?'pos':vac.ajuste_2025<0?'neg':'')+'">'+vac.ajuste_2025+' dias</div>';
+  vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+',2025)"><i class="ti ti-pencil" style="font-size:10px"></i> Editar</button>';
+  vacHtml+='</div>';
+  vacHtml+='<div class="vac-ajuste-box">';
+  vacHtml+='<div class="vac-ajuste-label">Ajuste 2026</div>';
+  vacHtml+='<div class="vac-ajuste-val '+(vac.ajuste_2026>0?'pos':vac.ajuste_2026<0?'neg':'')+'">'+vac.ajuste_2026+' dias</div>';
+  vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+',2026)"><i class="ti ti-pencil" style="font-size:10px"></i> Editar</button>';
+  vacHtml+='</div>';
+  vacHtml+='</div>';
+  // Boton registrar periodo
   vacHtml+='<div class="vac-actions">';
-  vacHtml+='<button class="vac-btn-sm" onclick="openVacAjuste('+id+')"><i class="ti ti-pencil" style="font-size:11px"></i> Ajuste manual</button>';
-  vacHtml+='<button class="vac-btn-sm" onclick="openVacPeriodo('+id+')"><i class="ti ti-plus" style="font-size:11px"></i> Registrar periodo</button>';
+  vacHtml+='<button class="vac-btn-sm" onclick="openVacPeriodo('+id+')"><i class="ti ti-plus" style="font-size:11px"></i> Registrar periodo tomado</button>';
   vacHtml+='</div>';
 
-  // Ciclos anuales desde fecha de ingreso
-  vacHtml+='<div class="vac-ciclos-title">Ciclos anuales desde fecha de ingreso</div>';
-  vac.ciclos.forEach(function(c){
+  // Solo ultimos 2 ciclos activos
+  vacHtml+='<div class="vac-ciclos-title">Periodos activos (max. 2 por ley)</div>';
+  vac.ciclosActivos.forEach(function(c){
     const usadosEnCiclo=vac.periodos.filter(function(p){
       return p.desde>=c.desde&&p.desde<c.hasta;
     }).reduce(function(s,p){return s+(p.dias||0);},0);
@@ -400,7 +431,7 @@ function openDetail(id){
     vacHtml+='<span class="vac-ciclo-label">'+(c.completo?'<i class="ti ti-check" style="color:var(--ok)"></i>':'<i class="ti ti-clock" style="color:var(--blue)"></i>')+' '+c.label+'</span>';
     vacHtml+='<span class="vac-ciclo-dias">'+c.devengado+' dias</span>';
     vacHtml+='</div>';
-    if(usadosEnCiclo>0)vacHtml+='<div class="vac-ciclo-usados">Usados en este ciclo: '+usadosEnCiclo+' dias</div>';
+    if(usadosEnCiclo>0)vacHtml+='<div class="vac-ciclo-usados">Usados: '+usadosEnCiclo+' dias</div>';
     vacHtml+='</div>';
   });
 
@@ -444,24 +475,29 @@ function openDetail(id){
 function closeDetail(){document.getElementById('detail-overlay').classList.remove('open');}
 
 // ── Modal ajuste manual ───────────────────────────────────────
-function openVacAjuste(id){
+function openVacAjuste(id,año){
   vacWorkerId=id;
   const w=workers.find(x=>x.id===id);if(!w)return;
   const vd=getVacData(w);
-  document.getElementById('vaj-titulo').textContent='Ajuste manual — '+w.nombre.split(' ')[0];
-  document.getElementById('vaj-valor').value=vd.ajuste||0;
+  const añoStr=año?String(año):'2025';
+  document.getElementById('vaj-titulo').textContent='Ajuste '+añoStr+' — '+w.nombre.split(' ')[0];
+  document.getElementById('vaj-desc').textContent='Dias a sumar o restar en '+añoStr+' (positivo = agregar, negativo = descontar)';
+  document.getElementById('vaj-año').value=añoStr;
+  document.getElementById('vaj-valor').value=añoStr==='2026'?vd.ajuste_2026||0:vd.ajuste_2025||0;
   document.getElementById('vaj-modal').classList.add('open');
 }
 function closeVacAjuste(){document.getElementById('vaj-modal').classList.remove('open');}
 
 async function saveVacAjuste(){
   const id=vacWorkerId;
+  const año=document.getElementById('vaj-año').value;
   const valor=Number(document.getElementById('vaj-valor').value)||0;
   const idx=workers.findIndex(x=>x.id===id);if(idx<0)return;
   const vd=getVacData(workers[idx]);
-  vd.ajuste=valor;
+  if(año==='2026')vd.ajuste_2026=valor;
+  else vd.ajuste_2025=valor;
   workers[idx].vacaciones_usadas=JSON.stringify(vd);
-  try{await sbPatch(id,{vacaciones_usadas:JSON.stringify(vd)});toast('Ajuste guardado');}
+  try{await sbPatch(id,{vacaciones_usadas:JSON.stringify(vd)});toast('Ajuste '+año+' guardado');}
   catch(e){console.error(e);toast('Error','err');}
   closeVacAjuste();closeDetail();openDetail(id);
 }
